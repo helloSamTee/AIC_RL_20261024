@@ -45,6 +45,7 @@ import math
 import os
 import random
 from collections import namedtuple
+from dataclasses import replace
 
 import gymnasium as gym
 import numpy as np
@@ -557,7 +558,7 @@ def read_env_spec(env: gym.Env) -> EnvSpec:
 Generators = namedtuple("Generators", ["torch_generator", "numpy_generator"])
 
 
-def seed_everything(seed: int | None, env: gym.Env) -> Generators:
+def seed_everything(seed: int | None, env: gym.Env, device: torch.device) -> Generators:
     """Seed every source of randomness and return the two explicit generators.
 
     When ``seed`` is an integer, all four randomness sources (Python ``random``,
@@ -566,6 +567,12 @@ def seed_everything(seed: int | None, env: gym.Env) -> Generators:
     same device produce identical action sequences and identical network parameters
     (Req 13.2). When ``seed`` is ``None`` we still build both generators (unseeded /
     default), so the training loop always has concrete generators to pass along.
+
+    The torch generator is created **on ``device``**. ``torch.randn(..., generator=g,
+    device=d)`` requires the generator and the target tensor to live on the same
+    device, so when the run is on CUDA the sampling generator must be a CUDA generator
+    too — otherwise action sampling raises
+    ``RuntimeError: Expected a 'cuda' device type for generator but found 'cpu'``.
 
     Returns a :class:`Generators` of ``(torch_generator, numpy_generator)``.
     """
@@ -583,13 +590,15 @@ def seed_everything(seed: int | None, env: gym.Env) -> Generators:
 
         # Explicit generators for the two reproducibility-critical consumers. Seeding
         # them from the same seed ties action sampling and minibatch shuffling to it.
-        torch_generator = torch.Generator()
+        # The torch generator lives on the run device so it matches the on-device
+        # tensors it draws noise for in sample_action.
+        torch_generator = torch.Generator(device=device)
         torch_generator.manual_seed(seed)
         numpy_generator = np.random.default_rng(seed)
     else:
         # No seed: still hand back concrete, default (unseeded) generators so the
         # loop's call sites are identical whether or not a seed was supplied.
-        torch_generator = torch.Generator()
+        torch_generator = torch.Generator(device=device)
         numpy_generator = np.random.default_rng()
 
     return Generators(torch_generator, numpy_generator)
@@ -811,7 +820,7 @@ def train(config: Config) -> TrainResult:
     # --- Seed everything from config.seed ---------------------------------
     # Seeds the env, the three global RNGs (network init included), and hands back the
     # two explicit generators for action sampling and minibatch shuffling (Req 13.2).
-    generators = seed_everything(config.seed, env)
+    generators = seed_everything(config.seed, env, device)
 
     # --- Buffer + updater -------------------------------------------------
     # The single-use rollout buffer, sized to exactly rollout_horizon. The PPO updater
@@ -1119,6 +1128,45 @@ def evaluate(config: Config, nets: TrainResult) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Artifact path anchoring
+# ---------------------------------------------------------------------------
+#
+# Why artifacts are anchored to the project root, not the working directory
+# -------------------------------------------------------------------------
+# The ``Config`` artifact paths (``log_dir``, ``video_dir``, ``checkpoint_path``) are
+# written as *relative* strings like ``artifacts/...``. A relative path resolves against
+# whatever directory you launched Python from, so running ``python main.py`` from inside
+# ``src/`` would scatter an ``artifacts/`` folder under ``src/``. We want a single,
+# predictable location: ``3_PPO/artifacts/`` — the project root, one level above this
+# file — no matter where the program is launched from. :func:`anchor_artifact_paths`
+# rewrites any relative artifact path so it is anchored there.
+
+# The project root is the directory that contains the ``src`` package — i.e. the parent
+# of the directory holding this file (``3_PPO/``).
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def anchor_artifact_paths(config: Config) -> Config:
+    """Return a copy of ``config`` with artifact paths anchored to the project root.
+
+    Each of ``log_dir``, ``video_dir``, and ``checkpoint_path`` is resolved against the
+    project root (``3_PPO/``) when it is relative, so artifacts always land in
+    ``3_PPO/artifacts/`` regardless of the current working directory. Absolute paths are
+    left untouched, so a learner who passes an explicit absolute location still gets it.
+    """
+
+    def _anchor(path: str) -> str:
+        return path if os.path.isabs(path) else os.path.join(_PROJECT_ROOT, path)
+
+    return replace(
+        config,
+        log_dir=_anchor(config.log_dir),
+        video_dir=_anchor(config.video_dir),
+        checkpoint_path=_anchor(config.checkpoint_path),
+    )
+
+
+# ---------------------------------------------------------------------------
 # The in-code entry point
 # ---------------------------------------------------------------------------
 #
@@ -1163,8 +1211,9 @@ def main() -> None:
 
     # Step 1: build the Config directly in code (no argparse). Defaults are fine for a
     # first run; to tweak an experiment, pass literal overrides here, e.g.:
+    #     config = Config(total_steps=200_000, seed=0)
     config = Config()
-    # For Testing on Local Device
+    # FOR LOCAL DEVICE TESTING
     # config = Config(
     #     total_steps=20_000,      # default is 1_000_000 — far too long on CPU
     #     rollout_horizon=1024,    # smaller single-use batch = less RAM per update
@@ -1174,6 +1223,10 @@ def main() -> None:
     #     seed=0,                  # reproducible run
     # )
 
+
+    # Anchor artifact paths to the project root (3_PPO/) so outputs always land in
+    # 3_PPO/artifacts/ — never under src/ — no matter where the program is launched.
+    config = anchor_artifact_paths(config)
 
     # Step 2: validate BEFORE creating any resource, so a bad knob fails fast and names
     # the offending field rather than blowing up mid-run.
