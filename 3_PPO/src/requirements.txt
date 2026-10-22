@@ -1,0 +1,22 @@
+# Runtime and development dependencies for the PPO CarRacing workshop module.
+#
+# gymnasium[box2d] : the CarRacing-v3 environment; the [box2d] extra pulls in
+#                    the Box2D physics backend CarRacing needs.
+# torch            : neural networks (shared CNN encoder, Actor, Critic) + autograd.
+# tensorboard      : visualize training/eval metrics (episode reward, policy loss,
+#                    value loss, entropy, mean eval reward, selected device).
+# numpy            : fast arrays backing the rollout buffer and GAE math.
+# imageio          : encode the frames captured during evaluation into a video file.
+# moviepy          : video backend Gymnasium's RecordVideo uses to write mp4 files.
+# pytest           : test runner for the unit and property-based tests.
+# hypothesis       : property-based testing of the pure PPO logic (policy math,
+#                    GAE, advantage normalization, minibatch partition, clipping).
+
+gymnasium[box2d]
+torch
+tensorboard
+numpy
+imageio
+moviepy
+pytest
+hypothesis
