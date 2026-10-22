@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RL Maze</title>
+<style>
+  :root {
+    --bg: #11131a;
+    --panel: #191c26;
+    --line: #2a2e3c;
+    --ink: #e6e8ee;
+    --muted: #868ca0;
+    --blue: #5b8cff;
+    --green: #35d6a4;
+    --amber: #ffb454;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.45;
+  }
+  .top {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 22px 22px 0;
+  }
+  .title { display: flex; align-items: baseline; gap: 12px; }
+  .title h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  .title span { color: var(--muted); font-size: 13px; }
+
+  /* algorithm chooser */
+  .algos { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .algos button {
+    background: var(--panel);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    padding: 9px 16px;
+    border-radius: 999px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: .15s;
+  }
+  .algos button:hover { color: var(--ink); }
+  .algos button.active {
+    color: #fff;
+    border-color: var(--blue);
+    background: linear-gradient(180deg, #2a3a66, #1d2846);
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 26px;
+    padding: 18px 22px;
+    align-items: start;
+    justify-content: center;
+    max-width: 880px;
+    margin: 0 auto;
+  }
+  @media (max-width: 880px) { .layout { grid-template-columns: 1fr; justify-items: center; } }
+
+  .left { display: flex; flex-direction: column; gap: 14px; width: 420px; }
+  @media (max-width: 880px) { .left { width: 100%; max-width: 420px; } }
+  canvas {
+    display: block;
+    border-radius: 8px;
+    background: #0c0e15;
+    border: 1px solid var(--line);
+  }
+  .modes { display: flex; gap: 6px; }
+  .modes button {
+    flex: 1;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    padding: 6px 0;
+    border-radius: 7px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .modes button.active { color: var(--ink); border-color: var(--blue); background: #1c2234; }
+  .modes button:disabled { opacity: .4; cursor: not-allowed; }
+  .modes.locked { position: relative; }
+  .modes.locked::after {
+    content: "🔒 locked while training — press Reset to edit";
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: var(--muted);
+    background: rgba(17,19,26,0.82);
+    border-radius: 7px;
+  }
+
+  .calc {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: linear-gradient(180deg, #1c202c, #171a23);
+    padding: 16px 18px;
+    min-height: 210px;
+  }
+  .calc .tag { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+  .calc .eq {
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 14px;
+    margin: 0 0 8px;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+  .calc .result { font-size: 18px; line-height: 1.5; margin-top: 10px; }
+  .calc .idle { color: var(--muted); font-size: 13px; font-family: inherit; line-height: 1.5; }
+  .b { color: var(--blue); }    .g { color: var(--green); }    .a { color: var(--amber); }
+  .dim { color: var(--muted); }
+  .calc sub, .calc sup, .ref sub, .ref sup { font-size: 0.72em; color: var(--muted); }
+  .calc .result sub { color: inherit; opacity: .75; }
+
+  .right { display: flex; flex-direction: column; gap: 16px; width: 400px; }
+  @media (max-width: 880px) { .right { width: 100%; max-width: 420px; } }
+  .controls { display: flex; gap: 7px; flex-wrap: wrap; }
+  .controls button {
+    background: #222838;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .controls button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .controls button.play { background: var(--green); border-color: var(--green); color: #06231b; }
+  .controls button:hover { filter: brightness(1.1); }
+
+  .meta { display: flex; gap: 18px; font-size: 13px; color: var(--muted); }
+  .meta b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .sliders { display: flex; flex-direction: column; gap: 9px; }
+  .slider { display: grid; grid-template-columns: 54px 1fr 40px; align-items: center; gap: 8px; }
+  .slider.off { opacity: .35; pointer-events: none; }
+  .slider label { font-size: 13px; color: var(--muted); }
+  .slider .v { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--blue); }
+
+  .ref {
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 12px;
+    color: var(--muted);
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+    line-height: 1.7;
+  }
+  .ref .f { color: var(--ink); font-size: 13px; }
+  .toggles { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); }
+  .toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .toggles label.off { opacity: .35; }
+  h3 { font-size: 12px; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); margin: 0 0 2px; }
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="title">
+    <h1>🧭 RL Maze</h1>
+    <span id="tagline">Choose an algorithm, set the goal, then train.</span>
+  </div>
+  <div class="algos" id="algos">
+    <button data-algo="dynamicprogramming">📐 Dynamic Programming</button>
+    <button data-algo="montecarlo">🎲 Monte Carlo</button>
+    <button data-algo="qlearning" class="active">🧠 Q-learning</button>
+  </div>
+</div>
+
+<div class="layout">
+  <!-- LEFT: maze + its controls and parameter tuning -->
+  <div class="left">
+    <div class="modes" id="modes">
+      <button id="mode-goal" class="active">🎯 Goal</button>
+      <button id="mode-start">🚩 Start</button>
+      <button id="mode-wall">🧱 Wall</button>
+    </div>
+    <canvas id="maze" width="420" height="420"></canvas>
+
+    <div class="controls">
+      <button id="step" class="primary">▶ Train step</button>
+      <button id="episode">⏭ Episode</button>
+      <button id="play" class="play">⏯ Play</button>
+      <button id="reset">↺ Reset</button>
+    </div>
+
+    <div class="meta">
+      <div id="metaUnitWrap"><span id="metaUnitLabel">Episode</span> <b id="epCount">0</b></div>
+      <div>Steps <b id="stepCount">0</b></div>
+      <div>Return <b id="lastReturn">—</b></div>
+    </div>
+
+    <div class="sliders">
+      <div class="slider" id="row-alpha"><label>α learn</label><input type="range" id="alpha" min="0.01" max="1" step="0.01" value="0.5"><span class="v" id="alphaV">0.50</span></div>
+      <div class="slider" id="row-gamma"><label>γ future</label><input type="range" id="gamma" min="0" max="0.99" step="0.01" value="0.90"><span class="v" id="gammaV">0.90</span></div>
+      <div class="slider" id="row-epsilon"><label>ε explore</label><input type="range" id="epsilon" min="0" max="1" step="0.01" value="0.30"><span class="v" id="epsilonV">0.30</span></div>
+      <div class="slider" id="row-speed"><label>speed</label><input type="range" id="speed" min="1" max="60" step="1" value="18"><span class="v" id="speedV">18</span></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: live calculation + formula + display toggles -->
+  <div class="right">
+    <div class="calc">
+      <div class="tag" id="calcTag">Live update · this step</div>
+      <div id="calcBody">
+        <div class="idle">Pick an algorithm and press Train or Play to watch it update, step by step.</div>
+      </div>
+    </div>
+
+    <div class="ref">
+      <div class="f" id="refFormula"></div>
+      <span id="refReward"></span>
+    </div>
+
+    <div class="toggles">
+      <h3>Show on maze</h3>
+      <label id="tog-q"><input type="checkbox" id="showQ" checked> Q-values per action</label>
+      <label id="tog-v"><input type="checkbox" id="showV" checked> Value heatmap</label>
+      <label id="tog-p"><input type="checkbox" id="showPolicy" checked> Policy arrows</label>
+    </div>
+  </div>
+</div>
+
+<!-- algorithm implementations (each registers into window.RLAlgorithms) -->
+<script src="dynamicprogramming.js"></script>
+<script src="montecarlo.js"></script>
+<script src="qlearning.js"></script>
+
+<script>
+/* =========================================================================
+ * SHARED CORE: the maze MDP environment, rendering, and the UI loop.
+ * The actual learning logic lives in the three algorithm files, each of
+ * which implements the same small interface (reset/step/value/q/policy).
+ * ======================================================================= */
+const N = 6;
+const ACTIONS = [
+  {dx:0, dy:-1, name:"↑"},
+  {dx:1, dy:0,  name:"→"},
+  {dx:0, dy:1,  name:"↓"},
+  {dx:-1,dy:0,  name:"←"}
+];
+const STEP_PENALTY = -0.01;
+const WALL_PENALTY = -0.20;
+const GOAL_REWARD = 1.0;
+
+let walls = new Set();
+let start = {x:0, y:0};
+let goal  = {x:N-1, y:N-1};
+
+const key = (x,y) => x+","+y;
+const isWall = (x,y) => walls.has(key(x,y));
+const inBounds = (x,y) => x>=0 && y>=0 && x<N && y<N;
+const isGoal = (x,y) => x===goal.x && y===goal.y;
+
+function transition(x, y, a) {
+  const nx = x + ACTIONS[a].dx;
+  const ny = y + ACTIONS[a].dy;
+  if (!inBounds(nx,ny) || isWall(nx,ny)) return {nx:x, ny:y, reward:WALL_PENALTY, done:false};
+  if (isGoal(nx,ny)) return {nx, ny, reward:GOAL_REWARD, done:true};
+  return {nx, ny, reward:STEP_PENALTY, done:false};
+}
+
+// object handed to each algorithm so it can query the shared model
+const env = {
+  N, ACTIONS, STEP_PENALTY, WALL_PENALTY, GOAL_REWARD,
+  get start() { return start; },
+  get goal() { return goal; },
+  isWall, isGoal, inBounds, transition,
+  gamma: () => +gammaEl.value
+};
+
+/* ---------- runtime state ---------- */
+let algo = null;          // current algorithm instance
+let algoName = "qlearning";
+let unitCount = 0;        // episodes (MC/Q) or sweeps (DP)
+let microSteps = 0;       // total step() calls
+let lastReturn = null;
+let playing = false, playTimer = null;
+let locked = false;
+
+/* ---------- DOM ---------- */
+const canvas = document.getElementById("maze");
+const ctx = canvas.getContext("2d");
+const SIZE = 420, cell = SIZE / N;
+
+const alphaEl = document.getElementById("alpha");
+const gammaEl = document.getElementById("gamma");
+const epsilonEl = document.getElementById("epsilon");
+const speedEl = document.getElementById("speed");
+const calcBody = document.getElementById("calcBody");
+const calcTag = document.getElementById("calcTag");
+const showQEl = document.getElementById("showQ");
+const showVEl = document.getElementById("showV");
+const showPolicyEl = document.getElementById("showPolicy");
+
+/* ---------- rendering ---------- */
+function valueColor(v) {
+  const t = Math.max(0, Math.min(1, (v + 0.2) / 1.2));
+  return `rgba(${Math.round(20+t*20)},${Math.round(40+t*150)},${Math.round(120-t*60)},${0.12 + t*0.6})`;
+}
+
+function draw() {
+  ctx.clearRect(0,0,SIZE,SIZE);
+  const showVv = showVEl.checked;
+  const showQv = showQEl.checked && algo.showsQ;
+  const showPv = showPolicyEl.checked;
+
+  for (let y=0;y<N;y++) for (let x=0;x<N;x++) {
+    const px = x*cell, py = y*cell;
+    if (isWall(x,y)) ctx.fillStyle = "#2a2f44";
+    else if (showVv) ctx.fillStyle = valueColor(algo.value(x,y));
+    else ctx.fillStyle = "#0e1119";
+    ctx.fillRect(px,py,cell,cell);
+    ctx.strokeStyle = "#262a38";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(px,py,cell,cell);
+    if (isWall(x,y)) continue;
+
+    if (showQv) {
+      const q = algo.q(x,y);
+      if (q) {
+        ctx.font = "10px Consolas, monospace";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        const cx = px+cell/2, cy = py+cell/2;
+        let best = 0; for (let i=1;i<4;i++) if (q[i]>q[best]) best = i;
+        const pos = [{x:cx,y:py+9},{x:px+cell-15,y:cy},{x:cx,y:py+cell-9},{x:px+15,y:cy}];
+        for (let a=0;a<4;a++) {
+          ctx.fillStyle = (a===best && Math.abs(q[a])>1e-6) ? "#35d6a4" : "#6b7290";
+          ctx.fillText(q[a].toFixed(2), pos[a].x, pos[a].y);
+        }
+      }
+    } else if (showVv) {
+      // DP (no per-action Q): print the single V(s) number in the cell
+      const v = algo.value(x,y);
+      if (Math.abs(v) > 1e-6 && !isGoal(x,y)) {
+        ctx.font = "11px Consolas, monospace";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillStyle = "#aeb6d6";
+        ctx.fillText(v.toFixed(2), px+cell/2, py+cell/2);
+      }
+    }
+
+    if (showPv && !isGoal(x,y)) {
+      const a = algo.policy(x,y);
+      if (a !== null && a !== undefined) drawArrow(px+cell/2, py+cell/2, a);
+    }
+  }
+
+  drawMarker(start.x, start.y, "#5b8cff", "S");
+  drawMarker(goal.x,  goal.y,  "#35d6a4", "G");
+
+  // agent dot only for methods that have a wandering agent
+  if (algo.hasAgent && algo.agentPos) {
+    const ap = algo.agentPos;
+    ctx.beginPath();
+    ctx.fillStyle = "#ffb454";
+    ctx.arc(ap.x*cell+cell/2, ap.y*cell+cell/2, cell*0.2, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = "#1a1300"; ctx.lineWidth = 2; ctx.stroke();
+  }
+}
+
+function drawArrow(cx, cy, a) {
+  const len = cell*0.26, dir = ACTIONS[a];
+  const ex = cx + dir.dx*len, ey = cy + dir.dy*len;
+  ctx.strokeStyle = "rgba(230,232,238,0.5)";
+  ctx.fillStyle = "rgba(230,232,238,0.5)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - dir.dx*len*0.4, cy - dir.dy*len*0.4);
+  ctx.lineTo(ex, ey);
+  ctx.stroke();
+  const ang = Math.atan2(dir.dy, dir.dx);
+  ctx.beginPath();
+  ctx.moveTo(ex, ey);
+  ctx.lineTo(ex - 7*Math.cos(ang - Math.PI/6), ey - 7*Math.sin(ang - Math.PI/6));
+  ctx.lineTo(ex - 7*Math.cos(ang + Math.PI/6), ey - 7*Math.sin(ang + Math.PI/6));
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawMarker(x,y,color,label) {
+  const px = x*cell, py = y*cell;
+  ctx.fillStyle = color; ctx.globalAlpha = 0.16; ctx.fillRect(px,py,cell,cell); ctx.globalAlpha = 1;
+  ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.strokeRect(px+2,py+2,cell-4,cell-4);
+  ctx.fillStyle = color; ctx.font = "bold 14px Segoe UI"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.fillText(label, px+4, py+3);
+}
+
+/* ---------- sliders ---------- */
+function bindSlider(el, out, fmt) {
+  const span = document.getElementById(out);
+  const upd = () => span.textContent = fmt(+el.value);
+  el.addEventListener("input", upd); upd();
+}
+bindSlider(alphaEl, "alphaV", v=>v.toFixed(2));
+bindSlider(gammaEl, "gammaV", v=>v.toFixed(2));
+bindSlider(epsilonEl, "epsilonV", v=>v.toFixed(2));
+bindSlider(speedEl, "speedV", v=>String(v));
+
+function params() {
+  return { alpha:+alphaEl.value, gamma:+gammaEl.value, epsilon:+epsilonEl.value };
+}
+
+/* ---------- stats ---------- */
+function updateStats() {
+  document.getElementById("epCount").textContent = unitCount;
+  document.getElementById("stepCount").textContent = microSteps;
+  document.getElementById("lastReturn").textContent = lastReturn===null ? "—" : lastReturn.toFixed(2);
+}
+
+/* ---------- the shared training unit ---------- */
+function doStep() {
+  if (!locked) setLocked(true);
+  const out = algo.step(params());
+  microSteps++;
+  if (out.episodeEnded) unitCount++;
+  if (out.reward !== null && out.reward !== undefined) lastReturn = out.reward;
+  calcBody.innerHTML = out.html;
+  updateStats();
+  draw();
+  return out;
+}
+
+// "Episode" button meaning depends on the algorithm's natural batch size
+function doBatch() {
+  if (algoName === "qlearning") {
+    // run until the current episode terminates
+    let guard = 0;
+    while (guard++ < N*N*8) { if (doStep().episodeEnded) break; }
+  } else if (algoName === "montecarlo") {
+    for (let i=0;i<10;i++) doStep();
+  } else { // dynamic programming
+    for (let i=0;i<5;i++) { if (doStep().converged) break; }
+  }
+}
+
+/* ---------- maze edit modes + lock ---------- */
+let editMode = "goal";
+const modeButtons = {
+  goal: document.getElementById("mode-goal"),
+  start: document.getElementById("mode-start"),
+  wall: document.getElementById("mode-wall")
+};
+function setMode(m) {
+  editMode = m;
+  for (const k in modeButtons) modeButtons[k].classList.toggle("active", k===m);
+}
+modeButtons.goal.onclick = ()=>setMode("goal");
+modeButtons.start.onclick = ()=>setMode("start");
+modeButtons.wall.onclick = ()=>setMode("wall");
+
+function setLocked(on) {
+  locked = on;
+  document.getElementById("modes").classList.toggle("locked", on);
+  for (const k in modeButtons) modeButtons[k].disabled = on;
+  canvas.style.cursor = on ? "not-allowed" : "pointer";
+}
+
+canvas.addEventListener("click", (e) => {
+  if (locked) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.floor((e.clientX - rect.left) / rect.width * N);
+  const y = Math.floor((e.clientY - rect.top) / rect.height * N);
+  if (!inBounds(x,y)) return;
+  if (editMode === "goal") {
+    if (isWall(x,y) || (x===start.x && y===start.y)) return;
+    goal = {x,y};
+  } else if (editMode === "start") {
+    if (isWall(x,y) || isGoal(x,y)) return;
+    start = {x,y};
+  } else if (editMode === "wall") {
+    if (isGoal(x,y) || (x===start.x && y===start.y)) return;
+    const k = key(x,y);
+    if (walls.has(k)) walls.delete(k); else walls.add(k);
+  }
+  resetLearning();
+});
+
+/* ---------- reset ---------- */
+function resetLearning() {
+  stopPlay();
+  setLocked(false);
+  algo.reset();
+  unitCount = 0; microSteps = 0; lastReturn = null;
+  calcBody.innerHTML = '<div class="idle">Press Train or Play to watch it update, step by step.</div>';
+  updateStats();
+  draw();
+}
+
+/* ---------- control buttons ---------- */
+document.getElementById("step").onclick = () => doStep();
+document.getElementById("episode").onclick = () => doBatch();
+document.getElementById("reset").onclick = () => resetLearning();
+
+const playBtn = document.getElementById("play");
+function startPlay() { playing = true; playBtn.textContent = "⏸ Pause"; tick(); }
+function stopPlay() { playing = false; playBtn.textContent = "⏯ Play"; if (playTimer) { clearTimeout(playTimer); playTimer = null; } }
+function tick() {
+  if (!playing) return;
+  doStep();
+  playTimer = setTimeout(tick, Math.max(16, 1000 / (+speedEl.value)));
+}
+playBtn.onclick = () => playing ? stopPlay() : startPlay();
+
+[showQEl, showVEl, showPolicyEl].forEach(el => el.addEventListener("change", draw));
+
+/* ---------- algorithm selection ---------- */
+function selectAlgorithm(name) {
+  algoName = name;
+  algo = window.RLAlgorithms[name](env);
+
+  // chooser highlight
+  document.querySelectorAll("#algos button").forEach(b =>
+    b.classList.toggle("active", b.dataset.algo === name));
+
+  // tagline + formula + reward note + control labels
+  document.getElementById("tagline").textContent = algo.tagline;
+  document.getElementById("refFormula").innerHTML = algo.formula;
+  document.getElementById("refReward").textContent = algo.rewardNote;
+  document.getElementById("step").textContent = algo.stepLabel;
+  document.getElementById("episode").textContent = algo.episodeLabel;
+  document.getElementById("metaUnitLabel").textContent =
+    (name === "dynamicprogramming") ? "Sweep" : "Episode";
+  calcTag.textContent = (name === "dynamicprogramming")
+    ? "Live update · this sweep"
+    : (name === "montecarlo" ? "Live update · this episode" : "Live update · this step");
+
+  // show/hide the sliders each algorithm actually uses
+  document.getElementById("row-alpha").classList.toggle("off", !algo.usesAlpha);
+  document.getElementById("row-epsilon").classList.toggle("off", !algo.usesEpsilon);
+  // Q-values toggle only meaningful when the method tracks Q
+  document.getElementById("tog-q").classList.toggle("off", !algo.showsQ);
+  showQEl.disabled = !algo.showsQ;
+
+  resetLearning();
+}
+
+document.querySelectorAll("#algos button").forEach(btn => {
+  btn.onclick = () => selectAlgorithm(btn.dataset.algo);
+});
+
+/* ---------- boot ---------- */
+selectAlgorithm("qlearning");
+</script>
+</body>
+</html>
