@@ -1163,16 +1163,16 @@ def main() -> None:
 
     # Step 1: build the Config directly in code (no argparse). Defaults are fine for a
     # first run; to tweak an experiment, pass literal overrides here, e.g.:
-    #     config = Config(total_steps=200_000, seed=0)
-    # config = Config()
-    config = Config(
-        total_steps=20_000,      # default is 1_000_000 — far too long on CPU
-        rollout_horizon=1024,    # smaller single-use batch = less RAM per update
-        minibatch_size=64,
-        update_epochs=4,         # default 10; fewer passes = faster iterations
-        eval_episodes=2,         # default 5
-        seed=0,                  # reproducible run
-    )
+    config = Config()
+    # For Testing on Local Device
+    # config = Config(
+    #     total_steps=20_000,      # default is 1_000_000 — far too long on CPU
+    #     rollout_horizon=1024,    # smaller single-use batch = less RAM per update
+    #     minibatch_size=64,
+    #     update_epochs=4,         # default 10; fewer passes = faster iterations
+    #     eval_episodes=2,         # default 5
+    #     seed=0,                  # reproducible run
+    # )
 
 
     # Step 2: validate BEFORE creating any resource, so a bad knob fails fast and names
