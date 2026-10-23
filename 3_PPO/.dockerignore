@@ -1,0 +1,12 @@
+# Keep the build context (3_PPO/) small and the image clean.
+# Virtual environment (rebuilt inside the image from src/requirements.txt)
+.venv/
+.venv311/
+# Python caches
+**/__pycache__/
+**/*.pyc
+tests/
+# Existing local run artifacts — generated fresh inside the container
+checkpoints/
+runs/
+videos/
